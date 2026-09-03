@@ -1,5 +1,15 @@
 namespace WiseAcademy.Desktop.Core;
 
+/// <summary>Modo de funcionamento do posto.</summary>
+public enum AppMode
+{
+    /// <summary>Usa os servidores centrais (web + API online). Requer internet.</summary>
+    Web,
+    /// <summary>Pilha local completa (API + Postgres embutido + frontend) no próprio
+    /// posto. Tudo funciona sem internet; sincroniza com o central quando volta.</summary>
+    Desktop,
+}
+
 /// <summary>Configuração da aplicação (appsettings.json).</summary>
 public sealed class AppConfig
 {
@@ -13,6 +23,28 @@ public sealed class AppConfig
     public int ConnectivityProbeSeconds { get; set; } = 15;
     /// <summary>Tentativas máximas por marcação antes de marcar como erro permanente.</summary>
     public int MaxSyncAttempts { get; set; } = 8;
+
+    /* ── modo desktop / pilha local ──────────────────────────────── */
+
+    /// <summary>Modo preferido ao arrancar. Sem internet o posto força <see cref="AppMode.Desktop"/>.</summary>
+    public AppMode PreferredMode { get; set; } = AppMode.Web;
+    /// <summary>Arrancar a pilha local automaticamente ao iniciar (evita espera na 1.ª troca para offline).</summary>
+    public bool AutoStartLocalStack { get; set; } = false;
+
+    /// <summary>Caminho para o <c>node.exe</c>. Vazio = <c>runtime/node/node.exe</c> ao lado do executável, senão o do PATH.</summary>
+    public string? NodePath { get; set; }
+    /// <summary>Pasta da API (com <c>dist/</c> e <c>node_modules/</c>). Vazio = deteção automática.</summary>
+    public string? LocalApiDir { get; set; }
+    /// <summary>Pasta do <c>local-backend</c> (com <c>server.mjs</c>). Vazio = deteção automática.</summary>
+    public string? LocalBackendDir { get; set; }
+    /// <summary>Pasta do frontend <c>standalone</c> (com <c>server.js</c>). Vazio = deteção automática.</summary>
+    public string? LocalFrontendDir { get; set; }
+
+    public int LocalApiPort { get; set; } = 4310;
+    public int LocalWebPort { get; set; } = 4311;
+    public int LocalPgPort { get; set; } = 55432;
+    /// <summary>Segredo JWT partilhado com o central (para os tokens centrais valerem na API local).</summary>
+    public string? LocalJwtSecret { get; set; }
 }
 
 /// <summary>Sessão autenticada, guardada localmente (token cifrado com DPAPI).</summary>

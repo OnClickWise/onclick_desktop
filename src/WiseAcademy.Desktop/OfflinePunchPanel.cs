@@ -11,7 +11,8 @@ public sealed class OfflinePunchPanel : UserControl
 
     private readonly Label _clock = new() { Font = new Font("Segoe UI", 30f, FontStyle.Bold), AutoSize = true, ForeColor = Color.FromArgb(29, 78, 216) };
     private readonly Label _date = new() { Font = new Font("Segoe UI", 11f), AutoSize = true, ForeColor = Color.Gray };
-    private readonly Label _hint = new() { AutoSize = true, ForeColor = Color.Gray, Text = "Modo offline — as marcações são guardadas e sincronizadas quando a internet voltar." };
+    private const string DefaultHint = "Modo offline — as marcações são guardadas e sincronizadas quando a internet voltar.";
+    private readonly Label _hint = new() { AutoSize = true, ForeColor = Color.Gray, Text = DefaultHint };
 
     private readonly Label _cardEntrada = Value();
     private readonly Label _cardSaida = Value();
@@ -138,6 +139,16 @@ public sealed class OfflinePunchPanel : UserControl
             "finished" => "Concluiu",
             _ => "Sem registo",
         };
+    }
+
+    /// <summary>Mostra um aviso contextual no topo do painel (ou repõe o texto
+    /// padrão quando <paramref name="text"/> é <c>null</c>).</summary>
+    public void ShowNotice(string? text)
+    {
+        var t = string.IsNullOrWhiteSpace(text) ? DefaultHint : text!;
+        if (_hint.Text == t) return;
+        _hint.Text = t;
+        _hint.ForeColor = string.IsNullOrWhiteSpace(text) ? Color.Gray : Color.FromArgb(180, 83, 9);
     }
 
     public void RefreshGrid()

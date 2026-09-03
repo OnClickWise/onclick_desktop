@@ -4,3 +4,9 @@ obj/
 .vs/
 publish/
 installer/Output/
+
+# dependências e artefactos da pilha local (modo desktop)
+node_modules/
+*.log
+local-backend/_*.mjs
+stack/

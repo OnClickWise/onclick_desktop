@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using WiseAcademy.Desktop.Core;
 
 namespace WiseAcademy.Desktop;
@@ -13,6 +14,7 @@ internal static class AppSettings
     {
         PropertyNameCaseInsensitive = true,
         WriteIndented = true,
+        Converters = { new JsonStringEnumConverter() },
     };
 
     public static AppConfig Load()
