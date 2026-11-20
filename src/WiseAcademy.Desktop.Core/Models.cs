@@ -31,6 +31,10 @@ public sealed class AppConfig
     /// <summary>Arrancar a pilha local automaticamente ao iniciar (evita espera na 1.ª troca para offline).</summary>
     public bool AutoStartLocalStack { get; set; } = false;
 
+    /// <summary>Agente de monitoria (módulo Monitoria). Só recolhe se a organização o tiver ativo;
+    /// false desliga-o neste posto independentemente da política.</summary>
+    public bool EnableMonitoring { get; set; } = true;
+
     /// <summary>Caminho para o <c>node.exe</c>. Vazio = <c>runtime/node/node.exe</c> ao lado do executável, senão o do PATH.</summary>
     public string? NodePath { get; set; }
     /// <summary>Pasta da API (com <c>dist/</c> e <c>node_modules/</c>). Vazio = deteção automática.</summary>

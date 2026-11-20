@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using WiseAcademy.Desktop.Core;
+using WiseAcademy.Desktop.Core.Monitoring;
 
 namespace WiseAcademy.Desktop;
 
@@ -26,6 +27,7 @@ public sealed class MainForm : Form
     private readonly SyncService _sync;
     private readonly ConnectivityMonitor _net;
     private readonly LocalStack _stack;
+    private readonly MonitoringAgent _monitor;
     private Session _session;
 
     private readonly WebView2 _web = new() { Dock = DockStyle.Fill, Visible = false };
@@ -47,12 +49,18 @@ public sealed class MainForm : Form
     private readonly ToolStripButton _syncBtn = new("Sincronizar agora");
     private readonly ToolStripLabel _pending = new();
     private readonly ToolStripLabel _boot_lbl = new() { Visible = false };
+    private readonly ToolStripLabel _mon = new() { Visible = false };
+    private readonly ToolStripButton _update = new() { Visible = false, ForeColor = Color.FromArgb(29, 78, 216) };
+    private readonly UpdateChecker _updates;
+    private UpdateInfo? _pendingUpdate;
+    private readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 6 * 60 * 60 * 1000 };
     private readonly ToolStripLabel _who = new() { Alignment = ToolStripItemAlignment.Right };
     private readonly ToolStripButton _logout = new("Terminar sessão") { Alignment = ToolStripItemAlignment.Right };
 
-    public MainForm(AppConfig cfg, ApiClient api, LocalStore store, SyncService sync, ConnectivityMonitor net, Session session)
+    public MainForm(AppConfig cfg, ApiClient api, LocalStore store, SyncService sync, ConnectivityMonitor net, Session session, MonitoringAgent monitor)
     {
-        _cfg = cfg; _api = api; _store = store; _sync = sync; _net = net; _session = session;
+        _cfg = cfg; _api = api; _store = store; _sync = sync; _net = net; _session = session; _monitor = monitor;
+        _updates = new UpdateChecker(cfg);
         _stack = new LocalStack(cfg);
         _mode = cfg.PreferredMode;
         _offline = new OfflinePunchPanel(store, sync) { Dock = DockStyle.Fill, Visible = true };
@@ -70,7 +78,7 @@ public sealed class MainForm : Form
         _bar.Items.AddRange([
             _dot, new ToolStripSeparator(),
             _modeWeb, _modeDesktop, new ToolStripSeparator(),
-            _syncBtn, _pending, _boot_lbl,
+            _syncBtn, _pending, _boot_lbl, _mon, _update,
             _logout, _who,
         ]);
         Controls.Add(_web);
@@ -88,6 +96,12 @@ public sealed class MainForm : Form
         _net.StatusChanged += online => UI(() => OnConnectivity(online));
         _sync.Changed += s => UI(() => RenderStatus(s));
         _sync.SessionExpired += () => UI(ReAuth);
+        _monitor.Changed += s => UI(() => RenderMonitor(s));
+        _update.Click += async (_, _) => await InstallUpdateAsync();
+        _updateTimer.Tick += async (_, _) => await CheckUpdateAsync();
+        _updateTimer.Start();
+        _monitor.NoticeRequired += n => UI(() => MessageBox.Show(this, n, "WiseAcademy — Monitoria de atividade", MessageBoxButtons.OK, MessageBoxIcon.Information));
+        _mon.Click += (_, _) => { var s = _monitor.Snapshot(); if (s.Notice is not null) MessageBox.Show(this, s.Notice, "Monitoria de atividade", MessageBoxButtons.OK, MessageBoxIcon.Information); };
 
         Load += async (_, _) => await InitAsync();
         FormClosed += (_, _) => { try { _stack.Dispose(); } catch { } };
@@ -115,6 +129,7 @@ public sealed class MainForm : Form
         }
 
         await _net.PokeAsync();
+        _ = CheckUpdateAsync();
 
         // sem internet ao arrancar → Modo Desktop
         if (!_net.IsOnline && _mode == AppMode.Web) { _mode = AppMode.Desktop; _autoDesktop = true; }
@@ -311,6 +326,62 @@ public sealed class MainForm : Form
         _pending.ToolTipText = s.LastSyncUtc is { } t ? $"Última sincronização: {t.ToLocalTime():dd/MM HH:mm}" : "Nunca sincronizado";
     }
 
+    /// <summary>Indicador de transparência: o colaborador vê sempre quando a monitoria está ativa.</summary>
+    private void RenderMonitor(AgentStatus s)
+    {
+        _mon.Visible = s.Active;
+        if (!s.Active) return;
+        if (s.Viewers.Count > 0)
+        {
+            // aviso bem visível: alguém está a ver o ecrã agora
+            _mon.Text = $"● Ecrã a ser visto por {string.Join(", ", s.Viewers)}";
+            _mon.ForeColor = Color.FromArgb(220, 38, 38);
+            _mon.ToolTipText = "Um gestor está a ver o seu ecrã ao vivo. A sessão fica registada; as imagens não são gravadas.";
+            return;
+        }
+        _mon.Text = "◉ Monitoria ativa" + (s.Screenshots ? " · capturas" : "") + (s.Queued > 0 && !s.Connected ? $" · {s.Queued} por enviar" : "");
+        _mon.ForeColor = Color.FromArgb(124, 58, 237);
+        _mon.ToolTipText = (s.Notice ?? "Atividade deste computador registada pela organização.") + "\n\nVeja os seus dados em «A minha atividade».";
+    }
+
+    /* ── atualização automática ──────────────────────────────────── */
+
+    private async Task CheckUpdateAsync()
+    {
+        var u = await _updates.CheckAsync();
+        if (u is null) return;
+        _pendingUpdate = u;
+        UI(() =>
+        {
+            _update.Text = $"⬆ Atualizar para {u.Version.ToString(3)}";
+            _update.ToolTipText = u.Notes ?? "Nova versão do posto disponível.";
+            _update.Visible = true;
+        });
+    }
+
+    private async Task InstallUpdateAsync()
+    {
+        if (_pendingUpdate is not { } u) return;
+        if (MessageBox.Show(this, $"Instalar a versão {u.Version.ToString(3)} do posto agora? O posto fecha e volta a abrir sozinho.",
+                "Atualização", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        _update.Enabled = false;
+        try
+        {
+            var progress = new Progress<int>(p => _update.Text = $"A descarregar… {p}%");
+            if (await _updates.InstallAsync(u, progress))
+            {
+                _monitor.Detach();
+                Application.Exit();
+            }
+        }
+        catch (Exception ex)
+        {
+            _update.Enabled = true;
+            _update.Text = $"⬆ Atualizar para {u.Version.ToString(3)}";
+            MessageBox.Show(this, ex.Message, "Atualização", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
     private void UI(Action a)
     {
         if (IsDisposed) return;
@@ -325,6 +396,7 @@ public sealed class MainForm : Form
             _session = login.Session;
             _sync.Detach();
             _sync.Attach(_session);
+            if (_cfg.EnableMonitoring) _monitor.Attach(_session);
             _who.Text = $"{_session.UserName}  ·  {_session.TenantName ?? _session.TenantSlug ?? ""}";
             _navBase = "";
             ApplyView();
@@ -339,6 +411,7 @@ public sealed class MainForm : Form
                 "WiseAcademy", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
             return;
         try { _web.CoreWebView2?.ExecuteScriptAsync("localStorage.clear()"); } catch { }
+        _monitor.Detach();
         _store.ClearSession();
         _sync.Detach();
         try { _stack.Dispose(); } catch { }

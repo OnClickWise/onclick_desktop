@@ -1,4 +1,5 @@
 using WiseAcademy.Desktop.Core;
+using WiseAcademy.Desktop.Core.Monitoring;
 
 namespace WiseAcademy.Desktop;
 
@@ -27,6 +28,8 @@ internal static class Program
         }
 
         sync.Attach(session);
-        Application.Run(new MainForm(cfg, api, store, sync, net, session));
+        using var monitor = new MonitoringAgent(cfg, store);
+        if (cfg.EnableMonitoring) monitor.Attach(session);
+        Application.Run(new MainForm(cfg, api, store, sync, net, session, monitor));
     }
 }
